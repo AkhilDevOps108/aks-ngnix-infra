@@ -57,7 +57,7 @@ jobs:
             echo "::add-mask::$TOKEN"
             echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-      # ✅ Use GitHub runner for Docker commands
+      # ✅ Use GitHub runner for Docker build/push (Docker is preinstalled)
       - name: Build and Push Docker Image
         env:
           ACR_NAME: ${{ secrets.ACR_NAME }}
@@ -69,6 +69,7 @@ jobs:
           docker build -t $ACR_NAME.azurecr.io/nginx-app:latest ./app
           docker push $ACR_NAME.azurecr.io/nginx-app:latest
 
+      # ✅ Create AKS cluster if missing
       - name: Create AKS Cluster (if not exists)
         uses: azure/cli@v2
         env:
@@ -83,11 +84,25 @@ jobs:
             az aks create --resource-group $RESOURCE_GROUP \
               --name $AKS_NAME \
               --node-count 1 \
-              --node-vm-size Standard_DC2s_v3 \
+              --node-vm-size Standard_DS2_v2 \
+              --enable-managed-identity \
               --enable-addons monitoring \
-              --attach-acr $ACR_NAME \
               --generate-ssh-keys \
               --location $AZURE_REGION
+
+      # ✅ Explicitly grant AKS permission to pull from ACR (fixes rollout errors)
+      - name: Grant AKS permission to pull from ACR
+        uses: azure/cli@v2
+        env:
+          RESOURCE_GROUP: ${{ secrets.RESOURCE_GROUP }}
+          AKS_NAME: ${{ secrets.AKS_NAME }}
+          ACR_NAME: ${{ secrets.ACR_NAME }}
+        with:
+          inlineScript: |
+            echo "Granting AKS permission to ACR..."
+            CLIENT_ID=$(az aks show --name $AKS_NAME --resource-group $RESOURCE_GROUP --query identityProfile.kubeletidentity.clientId -o tsv)
+            ACR_ID=$(az acr show --name $ACR_NAME --query id -o tsv)
+            az role assignment create --assignee $CLIENT_ID --role AcrPull --scope $ACR_ID || echo "Role already assigned."
 
       - name: Set AKS context
         uses: azure/aks-set-context@v3
@@ -125,5 +140,3 @@ jobs:
               sleep 10
             done
             echo "❌ No external IP found after 5 minutes"
-
-
