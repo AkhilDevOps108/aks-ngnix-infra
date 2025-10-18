@@ -44,8 +44,9 @@ jobs:
             az acr show --name $ACR_NAME --resource-group $RESOURCE_GROUP || \
             az acr create --resource-group $RESOURCE_GROUP --name $ACR_NAME --sku Basic
 
-      # ✅ Fixed ACR login using access token (no Docker-in-Docker issues)
-      - name: Login to ACR using access token
+      # ✅ Get ACR access token (no Docker in Azure CLI container)
+      - name: Get ACR access token
+        id: acr_token
         uses: azure/cli@v2
         env:
           ACR_NAME: ${{ secrets.ACR_NAME }}
@@ -53,16 +54,19 @@ jobs:
           inlineScript: |
             echo "Fetching access token for ACR: $ACR_NAME"
             TOKEN=$(az acr login --name $ACR_NAME --expose-token --output tsv --query accessToken)
-            echo "Logging into ACR with token..."
-            echo $TOKEN | docker login $ACR_NAME.azurecr.io --username 00000000-0000-0000-0000-000000000000 --password-stdin
+            echo "::add-mask::$TOKEN"
+            echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-      - name: Build and Push Docker Image to ACR
+      # ✅ Use GitHub runner for Docker commands
+      - name: Build and Push Docker Image
         env:
           ACR_NAME: ${{ secrets.ACR_NAME }}
+          TOKEN: ${{ steps.acr_token.outputs.token }}
         run: |
-          echo "Building Docker image..."
+          echo "Logging into ACR..."
+          echo $TOKEN | docker login $ACR_NAME.azurecr.io --username 00000000-0000-0000-0000-000000000000 --password-stdin
+          echo "Building and pushing image..."
           docker build -t $ACR_NAME.azurecr.io/nginx-app:latest ./app
-          echo "Pushing Docker image to ACR..."
           docker push $ACR_NAME.azurecr.io/nginx-app:latest
 
       - name: Create AKS Cluster (if not exists)
