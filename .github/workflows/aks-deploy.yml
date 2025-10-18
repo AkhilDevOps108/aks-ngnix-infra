@@ -103,6 +103,20 @@ jobs:
             CLIENT_ID=$(az aks show --name $AKS_NAME --resource-group $RESOURCE_GROUP --query identityProfile.kubeletidentity.clientId -o tsv)
             ACR_ID=$(az acr show --name $ACR_NAME --query id -o tsv)
             az role assignment create --assignee $CLIENT_ID --role AcrPull --scope $ACR_ID || echo "Role already assigned."
+      - name: Verify ACR Pull Permission
+        uses: azure/cli@v2
+        env:
+          RESOURCE_GROUP: ${{ secrets.RESOURCE_GROUP }}
+          AKS_NAME: ${{ secrets.AKS_NAME }}
+          ACR_NAME: ${{ secrets.ACR_NAME }}
+        with:
+          inlineScript: |
+            echo "Verifying that AKS can pull from ACR..."
+            CLIENT_ID=$(az aks show --name $AKS_NAME --resource-group $RESOURCE_GROUP --query identityProfile.kubeletidentity.clientId -o tsv)
+            ACR_ID=$(az acr show --name $ACR_NAME --query id -o tsv)
+            az role assignment list --assignee $CLIENT_ID --scope $ACR_ID --output table
+            echo "✅ Verified role assignment. Waiting 90 seconds for propagation..."
+            sleep 90
 
       - name: Set AKS context
         uses: azure/aks-set-context@v3
@@ -140,3 +154,4 @@ jobs:
               sleep 10
             done
             echo "❌ No external IP found after 5 minutes"
+
