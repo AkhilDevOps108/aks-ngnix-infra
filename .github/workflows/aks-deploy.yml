@@ -37,16 +37,17 @@ jobs:
               --name ${{ secrets.ACR_NAME }} \
               --sku Basic || echo "ACR already exists"
 
-      - name: Build and Push Docker Image to ACR
+      # ✅ Split into two separate steps (fix)
+      - name: Log in to ACR
         uses: azure/docker-login@v2
         with:
           login-server: ${{ secrets.ACR_NAME }}.azurecr.io
           creds: ${{ secrets.AZURE_CREDENTIALS }}
-        env:
-          ACR_NAME: ${{ secrets.ACR_NAME }}
+
+      - name: Build and Push Docker Image to ACR
         run: |
-          docker build -t $ACR_NAME.azurecr.io/nginx-app:latest ./app
-          docker push $ACR_NAME.azurecr.io/nginx-app:latest
+          docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/nginx-app:latest ./app
+          docker push ${{ secrets.ACR_NAME }}.azurecr.io/nginx-app:latest
 
       - name: Create AKS Cluster (if not exists)
         uses: azure/cli@v2
