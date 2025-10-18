@@ -44,12 +44,15 @@ jobs:
               --sku Basic || echo "ACR already exists"
 
       # ✅ Split into two separate steps (fix)
-      - name: Log in to ACR
-        uses: azure/docker-login@v2
+      - name: Login to ACR via Azure CLI
+        uses: azure/cli@v2
+        env:
+           ACR_NAME: ${{ secrets.ACR_NAME }}
         with:
-          login-server: ${{ secrets.ACR_NAME }}.azurecr.io
-          username: ${{ secrets.ACR_NAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
+          inlineScript: |
+          echo "Logging into ACR: $ACR_NAME"
+          az acr login --name $ACR_NAME
+
 
       - name: Build and Push Docker Image to ACR
         run: |
@@ -71,3 +74,4 @@ jobs:
               --enable-addons monitoring \
               --attach-acr $ACR_NAME \
               --generate-ssh-keys
+
