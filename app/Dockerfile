@@ -1,11 +1,4 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <title>AKS GitHub Actions Demo</title>
-</head>
-<body style="text-align:center; font-family:Arial;">
-  <h1>🚀 Deployed to Azure AKS via GitHub Actions!</h1>
-  <p>Zero manual steps 🎯</p>
-</body>
-</html>
+FROM nginx:latest
+COPY index.html /usr/share/nginx/html/index.html
+EXPOSE 80
 
