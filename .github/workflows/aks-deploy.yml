@@ -83,6 +83,7 @@ jobs:
             az aks create --resource-group $RESOURCE_GROUP \
               --name $AKS_NAME \
               --node-count 1 \
+              --node-vm-size Standard_B2s \
               --enable-addons monitoring \
               --attach-acr $ACR_NAME \
               --generate-ssh-keys \
@@ -124,3 +125,4 @@ jobs:
               sleep 10
             done
             echo "❌ No external IP found after 5 minutes"
+
