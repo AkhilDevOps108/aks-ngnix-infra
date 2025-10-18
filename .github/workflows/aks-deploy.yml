@@ -30,6 +30,7 @@ jobs:
           AZURE_REGION: ${{ secrets.AZURE_REGION }}
         with:
           inlineScript: |
+            echo "Creating Resource Group: $RESOURCE_GROUP in $AZURE_REGION"
             az group create --name $RESOURCE_GROUP --location $AZURE_REGION
 
       - name: Create Azure Container Registry
@@ -39,25 +40,27 @@ jobs:
           ACR_NAME: ${{ secrets.ACR_NAME }}
         with:
           inlineScript: |
-            az acr create --resource-group $RESOURCE_GROUP \
-              --name $ACR_NAME \
-              --sku Basic || echo "ACR already exists"
+            echo "Creating ACR: $ACR_NAME"
+            az acr show --name $ACR_NAME --resource-group $RESOURCE_GROUP || \
+            az acr create --resource-group $RESOURCE_GROUP --name $ACR_NAME --sku Basic
 
-      # ✅ Split into two separate steps (fix)
       - name: Login to ACR via Azure CLI
         uses: azure/cli@v2
         env:
-           ACR_NAME: ${{ secrets.ACR_NAME }}
+          ACR_NAME: ${{ secrets.ACR_NAME }}
         with:
           inlineScript: |
-          echo "Logging into ACR: $ACR_NAME"
-          az acr login --name $ACR_NAME
-
+            echo "Logging into ACR: $ACR_NAME"
+            az acr login --name $ACR_NAME
 
       - name: Build and Push Docker Image to ACR
+        env:
+          ACR_NAME: ${{ secrets.ACR_NAME }}
         run: |
-          docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/nginx-app:latest ./app
-          docker push ${{ secrets.ACR_NAME }}.azurecr.io/nginx-app:latest
+          echo "Building Docker image..."
+          docker build -t $ACR_NAME.azurecr.io/nginx-app:latest ./app
+          echo "Pushing Docker image to ACR..."
+          docker push $ACR_NAME.azurecr.io/nginx-app:latest
 
       - name: Create AKS Cluster (if not exists)
         uses: azure/cli@v2
@@ -65,13 +68,52 @@ jobs:
           RESOURCE_GROUP: ${{ secrets.RESOURCE_GROUP }}
           AKS_NAME: ${{ secrets.AKS_NAME }}
           ACR_NAME: ${{ secrets.ACR_NAME }}
+          AZURE_REGION: ${{ secrets.AZURE_REGION }}
         with:
           inlineScript: |
+            echo "Checking if AKS cluster exists..."
             az aks show --name $AKS_NAME --resource-group $RESOURCE_GROUP || \
             az aks create --resource-group $RESOURCE_GROUP \
               --name $AKS_NAME \
               --node-count 1 \
               --enable-addons monitoring \
               --attach-acr $ACR_NAME \
-              --generate-ssh-keys
+              --generate-ssh-keys \
+              --location $AZURE_REGION
 
+      - name: Set AKS context
+        uses: azure/aks-set-context@v3
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          cluster-name: ${{ secrets.AKS_NAME }}
+          resource-group: ${{ secrets.RESOURCE_GROUP }}
+
+      - name: Replace image placeholder in deployment
+        run: |
+          sed -i "s|PLACEHOLDER_IMAGE|${{ secrets.ACR_NAME }}.azurecr.io/nginx-app:latest|g" ./manifests/deployment.yaml
+
+      - name: Deploy App to AKS
+        uses: azure/k8s-deploy@v4
+        with:
+          manifests: |
+            ./manifests/deployment.yaml
+            ./manifests/service.yaml
+          images: |
+            ${{ secrets.ACR_NAME }}.azurecr.io/nginx-app:latest
+          namespace: default
+
+      - name: Get External IP
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            echo "Waiting for external IP..."
+            for i in {1..30}; do
+              IP=$(kubectl get svc nginx-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' || echo "")
+              if [ ! -z "$IP" ]; then
+                echo "✅ App available at: http://$IP"
+                exit 0
+              fi
+              echo "Retrying in 10s..."
+              sleep 10
+            done
+            echo "❌ No external IP found after 5 minutes"
