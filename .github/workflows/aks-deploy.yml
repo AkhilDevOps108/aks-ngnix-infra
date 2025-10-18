@@ -43,7 +43,6 @@ jobs:
               --name $ACR_NAME \
               --sku Basic || echo "ACR already exists"
 
-<<<<<<< HEAD
       # ✅ Split into two separate steps (fix)
       - name: Log in to ACR
         uses: azure/docker-login@v2
@@ -57,8 +56,6 @@ jobs:
           docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/nginx-app:latest ./app
           docker push ${{ secrets.ACR_NAME }}.azurecr.io/nginx-app:latest
 
-=======
->>>>>>> b43f792af72c2c70fd9a2847759b8aceac5eba47
       - name: Create AKS Cluster (if not exists)
         uses: azure/cli@v2
         env:
